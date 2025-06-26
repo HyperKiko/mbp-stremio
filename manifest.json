@@ -1,0 +1,23 @@
+{
+    "id": "fyi.kiko.mbp-stremio",
+    "name": "MovieBoxPro",
+    "description": "Watch media from MovieBoxPro on Stremio.",
+    "version": "0.0.1",
+    "idPrefixes": ["tt", "tmdb:"],
+    "resources": ["stream"],
+    "types": ["movie", "series"],
+    "catalogs": [],
+    "behaviorHints": {
+        "configurable": true,
+        "configurationRequired": true
+    },
+    "config": [
+        {
+            "key": "token",
+            "type": "text",
+            "title": "Token (ui cookie on website)",
+            "required": true
+        }
+    ]
+
+}
