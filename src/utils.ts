@@ -70,19 +70,14 @@ export async function getMovieInfo(id: string) {
     };
 }
 
-type Predicate<T> = (item: T, index: number, items: T[]) => Promise<boolean>;
-
-export const any = async <T>(
-    array: T[],
-    predicate: Predicate<T>
-): Promise<T> => {
-    return Promise.any(
-        array.map(async (item, index, items) => {
-            if (await predicate(item, index, items)) {
-                return item;
-            }
-
-            throw new Error();
-        })
-    );
-};
+export async function any<T>(
+  array: T[],
+  predicate: (t: T) => Promise<boolean>,
+): Promise<T | undefined> {
+  for (const t of array) {
+    if (await predicate(t)) {
+      return t;
+    }
+  }
+  return undefined;
+}
