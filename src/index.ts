@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { getDetails, getStreams, getSubtitles, search } from "./api";
+import * as directApi from "./api";
+import * as serverApi from "./api/server";
 import { cors } from "hono/cors";
 import manifest from "../manifest.json";
 import { any, getMovieInfo, getTVInfo } from "./utils";
@@ -30,30 +31,43 @@ app.get("/:config/manifest.json", (c) => {
 
 type Stream = {
     path: string;
-    quality: string;
     real_quality: string;
     fid: number;
-    bitstream: string;
-    filename: string;
     size_bytes: number;
+    filename: string;
+    h265: number;
+    hdr: number;
+    width: number;
+    height: number;
+    original: number;
+    vip_only: number;
+    fps: number;
+    bitstream: string;
 };
 
 app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
     const type = c.req.param("type");
     const id = c.req.param("id").slice(0, -".json".length);
-    const token = new URLSearchParams(c.req.param("config")).get("token");
-    if (!token) return c.json({ error: "no token" }, 400);
+    const params = new URLSearchParams(c.req.param("config"));
+    const token = params.get("token");
+    const server = params.get("server");
+    if (!token && !server) return c.json({ error: "no token or server" }, 400);
+    const api = token ? directApi : serverApi;
     const media =
         type === "movie" ? await getMovieInfo(id) : await getTVInfo(id);
-    const searchResults: { data: { id: number }[] } = await search(
-        media.name,
-        "",
-        type === "movie" ? "movie" : "tv"
-    );
+    const searchResults: { data: { id: number }[] } = await (token
+        ? directApi.search(media.name, "", type === "movie" ? "movie" : "tv")
+        : serverApi.search(
+              server!,
+              media.name,
+              "",
+              type === "movie" ? "movie" : "tv"
+          ));
     const mediaID = (
         await any(searchResults.data, async (result) => {
-            const detailResults: { data: { tmdb_id: number } } =
-                await getDetails(media.type, result.id);
+            const detailResults: { data: { tmdb_id: number } } = await (token
+                ? directApi.getDetails(media.type, result.id)
+                : serverApi.getDetails(server!, media.type, result.id));
             return detailResults.data.tmdb_id === media.id;
         })
     )?.id;
@@ -61,14 +75,14 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
 
     const data: { data: { list: Stream[] } } =
         media.type === "tv"
-            ? await getStreams(
-                  token,
+            ? await api.getStreams(
+                  (token || server)!,
                   "tv",
                   mediaID,
                   media.season,
                   media.episode
               )
-            : await getStreams(token, "movie", mediaID);
+            : await api.getStreams((token || server)!, "movie", mediaID);
 
     const streams = data.data.list.filter((stream) => stream.path !== "");
 
@@ -85,15 +99,20 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
             };
         } =
             media.type === "tv"
-                ? await getSubtitles(
-                      token,
+                ? await api.getSubtitles(
+                      (token || server)!,
                       "tv",
                       mediaID,
                       stream.fid,
                       media.season,
                       media.episode
                   )
-                : await getSubtitles(token, "movie", mediaID, stream.fid);
+                : await api.getSubtitles(
+                      (token || server)!,
+                      "movie",
+                      mediaID,
+                      stream.fid
+                  );
 
         const flatSubtitles = data.data.list.flatMap((x) => x.subtitles);
 
@@ -108,18 +127,25 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
         streams: await Promise.all(
             streams.map(async (stream) => ({
                 url: stream.path,
-                name: `${stream.quality}${
-                    stream.quality !== stream.real_quality
-                        ? ` (${stream.real_quality})`
-                        : ""
+                name: `${stream.original ? "ORG " : ""}${
+                    stream.real_quality
                 } - ${stream.bitstream}`,
-                description: stream.filename,
+                description: `${stream.vip_only ? "VIP " : ""}${stream.width}x${
+                    stream.height
+                }@${stream.fps}fps ${stream.hdr ? "HDR " : ""}${
+                    stream.h265 ? "H265 " : ""
+                }- ${stream.filename}`,
                 subtitles: await processSubtitles(stream),
                 behaviorHints: {
                     notWebReady: !new URL(stream.path).pathname.endsWith(
                         ".mp4"
                     ),
-                    bingeGroup: `mbp-${stream.quality}-${stream.real_quality}`,
+                    bingeGroup: `mbp-${stream.original}-${
+                        stream.real_quality
+                    }-${stream.hdr}-${
+                        Math.round(Number(stream.bitstream.slice(0, -4)) / 2) * // round to nearest 2 mb/s
+                        2
+                    }`,
                     videoSize: stream.size_bytes,
                     filename: stream.filename
                 }
