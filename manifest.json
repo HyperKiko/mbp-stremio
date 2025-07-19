@@ -16,8 +16,13 @@
             "key": "token",
             "type": "text",
             "title": "Token (ui cookie on website)",
-            "required": true
+            "required": false
+        },
+        {
+            "key": "server",
+            "type": "text",
+            "title": "mbp-api server",
+            "required": false
         }
     ]
-
 }
