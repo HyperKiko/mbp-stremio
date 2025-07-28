@@ -42,7 +42,7 @@ type Stream = {
     original: number;
     vip_only: number;
     fps: number;
-    bitstream: string;
+    bitstream?: string;
 };
 
 app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
@@ -143,8 +143,8 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
                     bingeGroup: `mbp-${stream.original}-${
                         stream.real_quality
                     }-${stream.hdr}-${
-                        Math.round(Number(stream.bitstream.slice(0, -4)) / 2) * // round to nearest 2 mb/s
-                        2
+                        Math.round(Number(stream.bitstream?.slice(0, -4)) / 2) *
+                        2 // round to nearest 2 mb/s
                     }`,
                     videoSize: stream.size_bytes,
                     filename: stream.filename
