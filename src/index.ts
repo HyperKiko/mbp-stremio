@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import * as directApi from "./api";
 import * as serverApi from "./api/server";
+import * as web from "./api/web";
 import { cors } from "hono/cors";
 import manifest from "../manifest.json";
 import { any, getMovieInfo, getTVInfo } from "./utils";
@@ -33,15 +34,15 @@ type Stream = {
     path: string;
     real_quality: string;
     fid: number;
-    size_bytes: number;
+    size_bytes?: number;
     filename: string;
     h265: number;
     hdr: number;
-    width: number;
-    height: number;
+    width?: number;
+    height?: number;
     original: number;
-    vip_only: number;
-    fps: number;
+    vip_only?: number;
+    fps?: number;
     bitstream?: string;
 };
 
@@ -73,7 +74,7 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
     )?.id;
     if (!mediaID) return c.json({ error: "not found" }, 404);
 
-    const data: { data: { list: Stream[] } } =
+    let data: { code: number; data: { list: Stream[] } } =
         media.type === "tv"
             ? await api.getStreams(
                   (token || server)!,
@@ -83,6 +84,17 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
                   media.episode
               )
             : await api.getStreams((token || server)!, "movie", mediaID);
+    if (data.code !== 1)
+        data =
+            media.type === "tv"
+                ? await web.getStreams(
+                      (token || server)!,
+                      "tv",
+                      mediaID,
+                      media.season,
+                      media.episode
+                  )
+                : await web.getStreams((token || server)!, "movie", mediaID);
 
     const streams = data.data.list.filter((stream) => stream.path !== "");
 
@@ -103,7 +115,7 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
                       (token || server)!,
                       "tv",
                       mediaID,
-                      stream.fid,
+                      stream.fid ?? 0,
                       media.season,
                       media.episode
                   )
@@ -111,7 +123,7 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
                       (token || server)!,
                       "movie",
                       mediaID,
-                      stream.fid
+                      stream.fid ?? 0
                   );
 
         const flatSubtitles = data.data.list.flatMap((x) => x.subtitles);
@@ -127,14 +139,25 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
         streams: await Promise.all(
             streams.map(async (stream) => ({
                 url: stream.path,
-                name: `${stream.original ? "ORG " : ""}${
-                    stream.real_quality
-                } - ${stream.bitstream}`,
-                description: `${stream.vip_only ? "VIP " : ""}${stream.width}x${
-                    stream.height
-                }@${stream.fps}fps ${stream.hdr ? "HDR " : ""}${
-                    stream.h265 ? "H265 " : ""
-                }- ${stream.filename}`,
+                name: `${
+                    stream.original && stream.real_quality !== "ORG"
+                        ? "ORG "
+                        : ""
+                }${stream.real_quality} - ${stream.bitstream}`,
+                description: `${
+                    stream.vip_only ||
+                    (stream.width && stream.height && stream.fps) ||
+                    stream.hdr ||
+                    stream.h265
+                        ? `${stream.vip_only ? "VIP " : ""}${
+                              stream.width && stream.height && stream.fps
+                                  ? `${stream.width}x${stream.height}@${stream.fps}fps `
+                                  : ""
+                          }${stream.hdr ? "HDR " : ""}${
+                              stream.h265 ? "H265 " : ""
+                          }- `
+                        : ""
+                }${stream.filename}`,
                 subtitles: await processSubtitles(stream),
                 behaviorHints: {
                     notWebReady: !new URL(stream.path).pathname.endsWith(
