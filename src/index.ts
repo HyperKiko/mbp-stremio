@@ -143,7 +143,9 @@ app.get("/:config/stream/:type{(movie|series)}/:id{(.+)\\.json}", async (c) => {
                     stream.original && stream.real_quality !== "ORG"
                         ? "ORG "
                         : ""
-                }${stream.real_quality} - ${stream.bitstream}`,
+                }${stream.real_quality}${
+                    stream.bitstream ? ` - ${stream.bitstream}` : ""
+                }`,
                 description: `${
                     stream.vip_only ||
                     (stream.width && stream.height && stream.fps) ||
